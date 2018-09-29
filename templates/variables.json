@@ -1,0 +1,6 @@
+{
+    "ApiLambdaFunction": {
+      "SECRETS_NAME": "<REPLACE_ME>",
+      "STAGE": "local-dev"
+    }
+  }

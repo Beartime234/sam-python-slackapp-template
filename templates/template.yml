@@ -1,0 +1,157 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: |
+  Deploys a slack bot. This is a template for building a simple slack bot that uses AWS lambda.
+
+Parameters:
+  ServiceName:
+    Description: The name of the service that you are deploying
+    Type: String
+    Default: SlackBot
+  SecretsName:
+    Description: The name  of the secret in secrets manager where you are storing your secrets
+    Type: String
+  Stage:
+    Description: The Stage/Environment you are building in.
+    Type: String
+    Default: dev
+    AllowedValues:
+    - local-dev
+    - dev
+    - test
+    - prod
+
+Globals:
+  Function:
+    Runtime: python3.6
+    Timeout: 30
+    Handler: app.lambda_handler
+    MemorySize: 256
+  Api:
+    EndpointConfiguration: REGIONAL
+
+
+Resources:
+  ApiGatewayApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      DefinitionBody:
+        swagger: '2.0'
+        info:
+          title:
+            Fn::Sub: ${ServiceName} - ( ${Stage} )
+        schemes:
+        - https
+        consumes:
+        - application/json
+        produces:
+        - application/json
+        basePath: /v1
+        paths:
+          /slack:
+            post:
+              summary: |
+                Main Slack posting api resource.
+              description:
+                Fn::Sub: |
+                  Main Slack posting resource. This is where you point the slack endpoint for ${ServiceName} to receive @ events.
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                uri:
+                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiLambdaFunction.Arn}/invocations
+                httpMethod: POST
+                responses:
+                  default:
+                    statusCode: 200
+              responses:
+                '200':
+                  description: |
+                    Request Received Okay!
+      StageName:
+        Ref:  Stage
+      Variables:
+        Stage:
+          Ref: Stage
+        ApiLambdaFunction:
+          Ref: ApiLambdaFunction
+  ApiLambdaFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: ../src/build/
+      Policies:
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn:
+              Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretsName}*
+        - DynamoDBCrudPolicy:
+            TableName:
+              Fn::Sub: ${Stage}-${ServiceName}-Data
+      FunctionName:
+        Fn::Sub: ${Stage}-${ServiceName}-Function
+      Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
+        Variables:
+          STAGE:
+            Ref: Stage
+          SECRETS_NAME:
+            Ref: SecretsName
+      Events:
+        Slack:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            RestApiId:
+              Ref: ApiGatewayApi
+            Path: /slack
+            Method: POST
+  ApiLambdaRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName:
+        Fn::Sub: ${Stage}-${ServiceName}-LambdaRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Sid: "AllowLambdaServiceToAssumeRole"
+          Effect: "Allow"
+          Action:
+          - "sts:AssumeRole"
+          Principal:
+            Service:
+            - "lambda.amazonaws.com"
+
+# Comment this out if you want a simple dynamo db table :)
+
+#  DataTable:
+#    Type: AWS::Serverless::SimpleTable
+#    Properties:
+#      PrimaryKey:
+#        Name: id
+#        Type: String
+#      TableName:
+#        Fn::Sub: ${Stage}-${ServiceName}-Data
+#      ProvisionedThroughput:
+#        ReadCapacityUnits: 5
+#        WriteCapacityUnits: 5
+
+Outputs:
+  BaseApiUrl:
+    Description: URL of your API endpoint
+    Value: !Join
+    - ''
+    - - https://
+      - Ref: ApiGatewayApi
+      - '.execute-api.'
+      - Ref: 'AWS::Region'
+      - '.amazonaws.com/'
+      - Ref: Stage
+  SlackApiUrl:
+    Description: URL of your API endpoint to put into the slack events
+    Value: !Join
+    - ''
+    - - https://
+      - Ref: ApiGatewayApi
+      - '.execute-api.'
+      - Ref: 'AWS::Region'
+      - '.amazonaws.com/'
+      - Ref: Stage
+      - '/slack'
