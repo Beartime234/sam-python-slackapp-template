@@ -130,7 +130,7 @@ def verify_request(slack_signature: str, slack_timestamp: str, slack_event_body:
         A boolean. If True the request was valid if False request was not valid.
     """
     if abs(time.time() - float(slack_timestamp)) > 60 * 5:
-        # The request is longer then 5 minutes ago
+        # The request is older then 5 minutes
         LOGGER.warning(f"Request verification failed. Timestamp was over 5 mins old for the request")
         return False
     sig_basestring = f"v0:{slack_timestamp}:{slack_event_body}".encode('utf-8')
