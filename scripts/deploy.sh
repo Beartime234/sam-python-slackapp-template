@@ -37,6 +37,8 @@ bash ./scripts/build.sh
 
 echo "CloudFormation packaging..."
 
+mkdir -p ${DIST_FOLDER}
+
 aws cloudformation package \
     --region ${REGION} \
     --template-file ${TEMPLATE_FOLDER}/${TEMPLATE_FILE} \
